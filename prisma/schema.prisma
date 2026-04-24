@@ -3,6 +3,243 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum UserRole {
+  RUNNER
+  COACH
+  ADMIN
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum TeamMembershipRole {
+  COACH
+  MEMBER
+}
+
+enum TeamJoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CoachContentType {
+  PLAN
+  TIP
+}
+
+enum NotificationType {
+  FOLLOW
+  POST_LIKE
+  POST_COMMENT
+  TEAM_JOIN_REQUEST
+  TEAM_REQUEST_APPROVED
+  TEAM_REQUEST_REJECTED
+  GOAL_COMPLETED
+  COACH_CONTENT_PUBLISHED
+}
+
+enum ReportReason {
+  SPAM
+  ABUSE
+  HARASSMENT
+  MISINFORMATION
+  OTHER
+}
+
+model User {
+  id                    String            @id @default(cuid())
+  email                 String            @unique
+  username              String            @unique
+  passwordHash          String
+  role                  UserRole          @default(RUNNER)
+  isActive              Boolean           @default(true)
+  isCoachValidated      Boolean           @default(false)
+  profile               Profile?
+  posts                 Post[]
+  comments              Comment[]
+  postLikes             PostLike[]
+  following             Follow[]          @relation("follower")
+  followers             Follow[]          @relation("following")
+  goals                 Goal[]
+  notificationsReceived Notification[]    @relation("notificationRecipient")
+  notificationsSent     Notification[]    @relation("notificationActor")
+  teamsCreated          Team[]            @relation("teamCoach")
+  teamMemberships       TeamMembership[]
+  teamJoinRequests      TeamJoinRequest[]
+  coachContents         CoachContent[]
+  reportsCreated        Report[]          @relation("reportReporter")
+  reportsResolved       Report[]          @relation("reportResolver")
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+}
+
+model Profile {
+  id             String   @id @default(cuid())
+  firstName      String
+  lastName       String
+  bio            String?
+  avatarUrl      String?
+  city           String?
+  country        String?
+  latitude       Float?
+  longitude      Float?
+  favoritePace   Float?
+  totalDistanceKm Float    @default(0)
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Post {
+  id              String     @id @default(cuid())
+  caption         String
+  imageUrl        String?
+  distanceKm      Float?
+  durationMinutes Int?
+  locationName    String?
+  authorId        String
+  author          User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments        Comment[]
+  likes           PostLike[]
+  reports         Report[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  postId    String
+  authorId  String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reports   Report[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PostLike {
+  userId    String
+  postId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId])
+}
+
+model Goal {
+  id                String     @id @default(cuid())
+  title             String
+  description       String?
+  targetDistanceKm  Float
+  currentDistanceKm Float      @default(0)
+  deadline          DateTime?
+  status            GoalStatus @default(ACTIVE)
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Team {
+  id           String            @id @default(cuid())
+  name         String
+  description  String
+  city         String?
+  coachId      String
+  coach        User              @relation("teamCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  members      TeamMembership[]
+  joinRequests TeamJoinRequest[]
+  contents     CoachContent[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model TeamMembership {
+  teamId     String
+  userId     String
+  role       TeamMembershipRole @default(MEMBER)
+  team       Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime           @default(now())
+
+  @@id([teamId, userId])
+}
+
+model TeamJoinRequest {
+  id         String                @id @default(cuid())
+  teamId      String
+  userId      String
+  status      TeamJoinRequestStatus @default(PENDING)
+  message     String?
+  team        Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([teamId, userId])
+}
+
+model CoachContent {
+  id         String           @id @default(cuid())
+  type       CoachContentType
+  title      String
+  content    String
+  coachId    String
+  teamId     String?
+  coach      User             @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  team       Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  type        NotificationType
+  message     String
+  recipientId String
+  actorId     String?
+  recipient   User             @relation("notificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor       User?            @relation("notificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+}
+
+model Report {
+  id           String       @id @default(cuid())
+  reason       ReportReason
+  details      String?
+  postId       String?
+  commentId    String?
+  reporterId   String
+  resolvedById String?
+  isResolved   Boolean      @default(false)
+  post         Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment      Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  reporter     User         @relation("reportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  resolvedBy   User?        @relation("reportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }

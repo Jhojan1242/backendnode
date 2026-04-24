@@ -4,13 +4,15 @@
   "description": "Runner social app backend",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "test": "vitest run"
+    "prisma:push": "prisma db push",
+    "seed": "tsx --env-file=.env prisma/seed.ts",
+    "test": "pnpm build && vitest run --pool=threads"
   },
   "keywords": [],
   "author": "",
@@ -38,6 +40,7 @@
     "@types/node": "^25.5.2",
     "prisma": "^6.16.2",
     "tsx": "^4.21.0",
+    "tsc-alias": "^1.8.16",
     "typescript": "^6.0.2"
   }
 }
