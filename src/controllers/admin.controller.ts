@@ -1,27 +1,22 @@
 import { Request, Response } from "express";
 
-import { AppError } from "@/errors/app-error";
 import {
   createReport,
   deleteCommentAsAdmin,
   deletePostAsAdmin,
+  listAdminUsers,
+  listAppSections,
   listReports,
   resolveReport,
+  updateAppSection,
   updateUserStatus,
   validateCoach
 } from "@/services/admin.service";
+import { getParamValue, requireAuthenticatedUser } from "@/utils/request";
 import { sendSuccessResponse } from "@/utils/send-response";
 
-function getParamValue(value: string | string[], label: string) {
-  if (Array.isArray(value)) {
-    throw new AppError(`${label} is invalid`, 400);
-  }
-
-  return value;
-}
-
 export async function createModerationReport(req: Request, res: Response) {
-  const report = await createReport(req.user!.id, req.body);
+  const report = await createReport(requireAuthenticatedUser(req).id, req.body);
 
   return sendSuccessResponse(res, {
     statusCode: 201,
@@ -39,8 +34,39 @@ export async function getReports(_req: Request, res: Response) {
   });
 }
 
+export async function getAdminUsers(req: Request, res: Response) {
+  const users = await listAdminUsers(req.query as never);
+
+  return sendSuccessResponse(res, {
+    message: "Users fetched successfully",
+    data: users
+  });
+}
+
+export async function getAdminSections(_req: Request, res: Response) {
+  const sections = await listAppSections();
+
+  return sendSuccessResponse(res, {
+    message: "Sections fetched successfully",
+    data: sections
+  });
+}
+
+export async function patchAdminSection(req: Request, res: Response) {
+  const section = await updateAppSection(getParamValue(req.params.sectionId, "Section id"), req.body.enabled);
+
+  return sendSuccessResponse(res, {
+    message: "Section updated successfully",
+    data: section
+  });
+}
+
 export async function resolveModerationReport(req: Request, res: Response) {
-  const report = await resolveReport(req.user!.id, getParamValue(req.params.reportId, "Report id"), req.body);
+  const report = await resolveReport(
+    requireAuthenticatedUser(req).id,
+    getParamValue(req.params.reportId, "Report id"),
+    req.body
+  );
 
   return sendSuccessResponse(res, {
     message: "Report resolved successfully",

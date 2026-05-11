@@ -13,7 +13,8 @@ import {
   patchMyProfile,
   unfollowRunner
 } from "@/controllers/user.controller";
-import { requireAuth } from "@/middlewares/auth.middleware";
+import { attachOptionalAuth, requireAuth } from "@/middlewares/auth.middleware";
+import { mutationRateLimit } from "@/middlewares/security-policies.middleware";
 import { validateRequest } from "@/middlewares/validate-request.middleware";
 import {
   createGoalSchema,
@@ -31,6 +32,7 @@ const userRouter = Router();
 userRouter.get("/me", asyncHandler(requireAuth), asyncHandler(getMeProfile));
 userRouter.patch(
   "/me/profile",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   validateRequest(updateProfileSchema),
   asyncHandler(patchMyProfile)
@@ -41,15 +43,23 @@ userRouter.get(
   validateRequest(discoverUsersSchema),
   asyncHandler(getNearbyUsers)
 );
-userRouter.get("/:userId", validateRequest(userIdParamSchema), asyncHandler(getUserProfile));
+userRouter.get(
+  "/nearby",
+  asyncHandler(requireAuth),
+  validateRequest(discoverUsersSchema),
+  asyncHandler(getNearbyUsers)
+);
+userRouter.get("/:userId", asyncHandler(attachOptionalAuth), validateRequest(userIdParamSchema), asyncHandler(getUserProfile));
 userRouter.post(
   "/:userId/follow",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   validateRequest(userIdParamSchema),
   asyncHandler(followRunner)
 );
 userRouter.delete(
   "/:userId/follow",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   validateRequest(userIdParamSchema),
   asyncHandler(unfollowRunner)
@@ -58,6 +68,7 @@ userRouter.get("/:userId/followers", validateRequest(followListQuerySchema), asy
 userRouter.get("/:userId/following", validateRequest(followListQuerySchema), asyncHandler(getFollowing));
 userRouter.post(
   "/goals",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   validateRequest(createGoalSchema),
   asyncHandler(createUserGoal)
@@ -65,6 +76,7 @@ userRouter.post(
 userRouter.get("/goals/me", asyncHandler(requireAuth), validateRequest(goalListQuerySchema), asyncHandler(getMyGoals));
 userRouter.patch(
   "/goals/:goalId/progress",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   validateRequest(updateGoalProgressSchema),
   asyncHandler(patchGoalProgress)

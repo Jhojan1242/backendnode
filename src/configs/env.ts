@@ -8,7 +8,12 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   JWT_SECRET: z.string().min(10, "JWT_SECRET must be at least 10 characters long"),
-  JWT_EXPIRES_IN: z.string().min(1, "JWT_EXPIRES_IN is required").default("7d")
+  JWT_EXPIRES_IN: z.string().min(1, "JWT_EXPIRES_IN is required").default("7d"),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  WRITE_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  WRITE_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60 * 1000)
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

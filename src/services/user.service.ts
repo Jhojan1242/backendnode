@@ -1,6 +1,7 @@
 import prisma from "@/configs/prisma";
 import { AppError } from "@/errors/app-error";
 import { createNotification } from "@/services/notification.service";
+import { privateUserSelect, publicUserSelect } from "@/services/user.selectors";
 import { createPaginatedResponse, getPagination } from "@/utils/pagination";
 
 type UpdateProfileInput = {
@@ -33,7 +34,10 @@ type DiscoverUsersInput = {
   country?: string;
   role?: "RUNNER" | "COACH";
   search?: string;
-  sortBy: "createdAt" | "username";
+  latitude?: number;
+  longitude?: number;
+  radiusKm: number;
+  sortBy: "createdAt" | "username" | "distance";
   order: "asc" | "desc";
 };
 
@@ -50,28 +54,11 @@ type GoalListInput = {
   order: "asc" | "desc";
 };
 
-const publicUserSelect = {
-  id: true,
-  email: true,
-  username: true,
-  role: true,
-  isCoachValidated: true,
-  createdAt: true,
-  profile: true,
-  _count: {
-    select: {
-      posts: true,
-      followers: true,
-      following: true
-    }
-  }
-} as const;
-
 export async function getMyProfile(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
-      ...publicUserSelect,
+      ...privateUserSelect,
       isActive: true,
       goals: {
         orderBy: {
@@ -93,7 +80,7 @@ export async function getMyProfile(userId: string) {
   return user;
 }
 
-export async function getPublicUserProfile(userId: string) {
+export async function getPublicUserProfile(userId: string, viewerId?: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: publicUserSelect
@@ -103,7 +90,29 @@ export async function getPublicUserProfile(userId: string) {
     throw new AppError("User not found", 404);
   }
 
-  return user;
+  if (!viewerId || viewerId === userId) {
+    return {
+      ...user,
+      isFollowedByViewer: false
+    };
+  }
+
+  const follow = await prisma.follow.findUnique({
+    where: {
+      followerId_followingId: {
+        followerId: viewerId,
+        followingId: userId
+      }
+    },
+    select: {
+      followerId: true
+    }
+  });
+
+  return {
+    ...user,
+    isFollowedByViewer: Boolean(follow)
+  };
 }
 
 export async function updateMyProfile(userId: string, input: UpdateProfileInput) {
@@ -126,42 +135,11 @@ export async function updateMyProfile(userId: string, input: UpdateProfileInput)
 }
 
 export async function discoverNearbyUsers(userId: string, input: DiscoverUsersInput) {
-  const where = {
-    id: {
-      not: userId
-    },
-    ...(input.role ? { role: input.role } : {}),
-    ...(input.search
+  const hasCoordinates = typeof input.latitude === "number" && typeof input.longitude === "number";
+  const profileFilter =
+    input.city || input.country
       ? {
-          OR: [
-            {
-              username: {
-                contains: input.search,
-                mode: "insensitive" as const
-              }
-            },
-            {
-              profile: {
-                firstName: {
-                  contains: input.search,
-                  mode: "insensitive" as const
-                }
-              }
-            },
-            {
-              profile: {
-                lastName: {
-                  contains: input.search,
-                  mode: "insensitive" as const
-                }
-              }
-            }
-          ]
-        }
-      : {}),
-    profile:
-      input.city || input.country
-        ? {
+          is: {
             ...(input.city
               ? {
                   city: {
@@ -179,36 +157,186 @@ export async function discoverNearbyUsers(userId: string, input: DiscoverUsersIn
                 }
               : {})
           }
-        : undefined
+        }
+      : undefined;
+
+  const where = {
+    id: {
+      not: userId
+    },
+    ...(input.role ? { role: input.role } : {}),
+    ...(input.search
+      ? {
+          OR: [
+            {
+              username: {
+                contains: input.search,
+                mode: "insensitive" as const
+              }
+            },
+            {
+              profile: {
+                is: {
+                  firstName: {
+                    contains: input.search,
+                    mode: "insensitive" as const
+                  }
+                }
+              }
+            },
+            {
+              profile: {
+                is: {
+                  lastName: {
+                    contains: input.search,
+                    mode: "insensitive" as const
+                  }
+                }
+              }
+            }
+          ]
+        }
+      : {}),
+    ...(profileFilter ? { profile: profileFilter } : {})
   };
-  const totalItems = await prisma.user.count({ where });
   const { skip, take } = getPagination(input);
 
-  const users = await prisma.user.findMany({
+  if (!hasCoordinates) {
+    const totalItems = await prisma.user.count({ where });
+    const users = await prisma.user.findMany({
+      where: {
+        ...where
+      },
+      select: publicUserSelect,
+      orderBy:
+        input.sortBy === "username"
+          ? {
+              username: input.order
+            }
+          : {
+              createdAt: input.order
+            },
+      skip,
+      take
+    });
+
+    return createPaginatedResponse(users, input, totalItems, {
+      city: input.city,
+      country: input.country,
+      role: input.role,
+      search: input.search,
+      sortBy: input.sortBy,
+      order: input.order
+    });
+  }
+
+  const centerLatitude = input.latitude as number;
+  const centerLongitude = input.longitude as number;
+  const latitudeDelta = input.radiusKm / 111;
+  const longitudeDelta = input.radiusKm / (111 * Math.max(Math.cos((centerLatitude * Math.PI) / 180), 0.1));
+
+  const geoUsers = await prisma.user.findMany({
     where: {
-      ...where
-    },
-    select: publicUserSelect,
-    orderBy:
-      input.sortBy === "username"
-        ? {
-            username: input.order
-          }
-        : {
-            createdAt: input.order
+      ...where,
+      profile: {
+        is: {
+          ...(input.city
+            ? {
+                city: {
+                  equals: input.city,
+                  mode: "insensitive" as const
+                }
+              }
+            : {}),
+          ...(input.country
+            ? {
+                country: {
+                  equals: input.country,
+                  mode: "insensitive" as const
+                }
+              }
+            : {}),
+          latitude: {
+            not: null,
+            gte: centerLatitude - latitudeDelta,
+            lte: centerLatitude + latitudeDelta
           },
-    skip,
-    take
+          longitude: {
+            not: null,
+            gte: centerLongitude - longitudeDelta,
+            lte: centerLongitude + longitudeDelta
+          }
+        }
+      }
+    },
+    select: publicUserSelect
   });
 
-  return createPaginatedResponse(users, input, totalItems, {
-    city: input.city,
-    country: input.country,
+  const usersWithDistance = geoUsers
+    .map((user) => {
+      const latitude = user.profile?.latitude;
+      const longitude = user.profile?.longitude;
+
+      if (typeof latitude !== "number" || typeof longitude !== "number") {
+        return null;
+      }
+
+      const distanceKm = haversineDistanceKm(centerLatitude, centerLongitude, latitude, longitude);
+
+      if (distanceKm > input.radiusKm) {
+        return null;
+      }
+
+      return {
+        ...user,
+        distanceKm
+      };
+    })
+    .filter((user): user is NonNullable<typeof user> => Boolean(user));
+
+  const sortedUsers = usersWithDistance.sort((left, right) => {
+    if (input.sortBy === "username") {
+      return input.order === "asc"
+        ? left.username.localeCompare(right.username)
+        : right.username.localeCompare(left.username);
+    }
+
+    if (input.sortBy === "createdAt") {
+      return input.order === "asc"
+        ? new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+        : new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+    }
+
+    return input.order === "asc" ? left.distanceKm - right.distanceKm : right.distanceKm - left.distanceKm;
+  });
+
+  return createPaginatedResponse(sortedUsers.slice(skip, skip + take), input, sortedUsers.length, {
     role: input.role,
     search: input.search,
     sortBy: input.sortBy,
-    order: input.order
+    order: input.order,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    radiusKm: input.radiusKm
   });
+}
+
+function haversineDistanceKm(originLat: number, originLng: number, targetLat: number, targetLng: number) {
+  const earthRadiusKm = 6371;
+  const latitudeDelta = toRadians(targetLat - originLat);
+  const longitudeDelta = toRadians(targetLng - originLng);
+  const originLatRadians = toRadians(originLat);
+  const targetLatRadians = toRadians(targetLat);
+
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(originLatRadians) * Math.cos(targetLatRadians) * Math.sin(longitudeDelta / 2) ** 2;
+
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
 }
 
 export async function followUser(userId: string, targetUserId: string) {
@@ -266,9 +394,11 @@ export async function listFollowers(userId: string, input: FollowListInput) {
     ...(input.search
       ? {
           follower: {
-            username: {
-              contains: input.search,
-              mode: "insensitive" as const
+            is: {
+              username: {
+                contains: input.search,
+                mode: "insensitive" as const
+              }
             }
           }
         }
@@ -301,9 +431,11 @@ export async function listFollowing(userId: string, input: FollowListInput) {
     ...(input.search
       ? {
           following: {
-            username: {
-              contains: input.search,
-              mode: "insensitive" as const
+            is: {
+              username: {
+                contains: input.search,
+                mode: "insensitive" as const
+              }
             }
           }
         }

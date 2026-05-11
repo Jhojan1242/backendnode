@@ -1,36 +1,22 @@
 import { Request, Response } from "express";
 
-import { AppError } from "@/errors/app-error";
 import {
+  blockTeamMember,
   createTeam,
   getTeamById,
   listCoachContents,
   listTeamJoinRequests,
   listTeams,
   publishCoachContent,
+  removeTeamMember,
   requestToJoinTeam,
   reviewJoinRequest
 } from "@/services/team.service";
+import { getParamValue, requireAuthenticatedUser } from "@/utils/request";
 import { sendSuccessResponse } from "@/utils/send-response";
 
-function getRequestUserId(req: Request) {
-  if (!req.user) {
-    throw new AppError("Authentication is required", 401);
-  }
-
-  return req.user.id;
-}
-
-function getParamValue(value: string | string[], label: string) {
-  if (Array.isArray(value)) {
-    throw new AppError(`${label} is invalid`, 400);
-  }
-
-  return value;
-}
-
 export async function createCoachTeam(req: Request, res: Response) {
-  const team = await createTeam(getRequestUserId(req), req.body);
+  const team = await createTeam(requireAuthenticatedUser(req).id, req.body);
 
   return sendSuccessResponse(res, {
     statusCode: 201,
@@ -40,7 +26,7 @@ export async function createCoachTeam(req: Request, res: Response) {
 }
 
 export async function getTeams(req: Request, res: Response) {
-  const teams = await listTeams(req.query as never);
+  const teams = await listTeams(req.query as never, req.user?.id);
 
   return sendSuccessResponse(res, {
     message: "Teams fetched successfully",
@@ -49,7 +35,7 @@ export async function getTeams(req: Request, res: Response) {
 }
 
 export async function getTeam(req: Request, res: Response) {
-  const team = await getTeamById(getParamValue(req.params.teamId, "Team id"));
+  const team = await getTeamById(getParamValue(req.params.teamId, "Team id"), req.user?.id);
 
   return sendSuccessResponse(res, {
     message: "Team fetched successfully",
@@ -59,7 +45,7 @@ export async function getTeam(req: Request, res: Response) {
 
 export async function createJoinRequest(req: Request, res: Response) {
   const request = await requestToJoinTeam(
-    getRequestUserId(req),
+    requireAuthenticatedUser(req).id,
     getParamValue(req.params.teamId, "Team id"),
     req.body
   );
@@ -73,7 +59,7 @@ export async function createJoinRequest(req: Request, res: Response) {
 
 export async function getJoinRequests(req: Request, res: Response) {
   const requests = await listTeamJoinRequests(
-    getRequestUserId(req),
+    requireAuthenticatedUser(req).id,
     getParamValue(req.params.teamId, "Team id"),
     req.query as never
   );
@@ -86,7 +72,7 @@ export async function getJoinRequests(req: Request, res: Response) {
 
 export async function reviewRequest(req: Request, res: Response) {
   const request = await reviewJoinRequest(
-    getRequestUserId(req),
+    requireAuthenticatedUser(req).id,
     getParamValue(req.params.requestId, "Request id"),
     req.body
   );
@@ -98,7 +84,7 @@ export async function reviewRequest(req: Request, res: Response) {
 }
 
 export async function createCoachContent(req: Request, res: Response) {
-  const content = await publishCoachContent(getRequestUserId(req), req.body);
+  const content = await publishCoachContent(requireAuthenticatedUser(req).id, req.body);
 
   return sendSuccessResponse(res, {
     statusCode: 201,
@@ -113,5 +99,32 @@ export async function getCoachContents(req: Request, res: Response) {
   return sendSuccessResponse(res, {
     message: "Coach content fetched successfully",
     data: contents
+  });
+}
+
+export async function removeRunnerFromTeam(req: Request, res: Response) {
+  const result = await removeTeamMember(
+    requireAuthenticatedUser(req).id,
+    getParamValue(req.params.teamId, "Team id"),
+    getParamValue(req.params.memberId, "Member id")
+  );
+
+  return sendSuccessResponse(res, {
+    message: "Team member removed successfully",
+    data: result
+  });
+}
+
+export async function blockRunnerFromTeam(req: Request, res: Response) {
+  const result = await blockTeamMember(
+    requireAuthenticatedUser(req).id,
+    getParamValue(req.params.teamId, "Team id"),
+    req.body
+  );
+
+  return sendSuccessResponse(res, {
+    statusCode: 201,
+    message: "Runner blocked from team successfully",
+    data: result
   });
 }

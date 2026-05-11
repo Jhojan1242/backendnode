@@ -44,6 +44,8 @@ enum NotificationType {
   TEAM_JOIN_REQUEST
   TEAM_REQUEST_APPROVED
   TEAM_REQUEST_REJECTED
+  TEAM_MEMBER_REMOVED
+  TEAM_MEMBER_BLOCKED
   GOAL_COMPLETED
   COACH_CONTENT_PUBLISHED
 }
@@ -76,6 +78,8 @@ model User {
   teamsCreated          Team[]            @relation("teamCoach")
   teamMemberships       TeamMembership[]
   teamJoinRequests      TeamJoinRequest[]
+  teamBans              TeamBan[]
+  teamBlocksIssued      TeamBan[]         @relation("teamBlocker")
   coachContents         CoachContent[]
   reportsCreated        Report[]          @relation("reportReporter")
   reportsResolved       Report[]          @relation("reportResolver")
@@ -84,21 +88,21 @@ model User {
 }
 
 model Profile {
-  id             String   @id @default(cuid())
-  firstName      String
-  lastName       String
-  bio            String?
-  avatarUrl      String?
-  city           String?
-  country        String?
-  latitude       Float?
-  longitude      Float?
-  favoritePace   Float?
+  id              String   @id @default(cuid())
+  firstName       String
+  lastName        String
+  bio             String?
+  avatarUrl       String?
+  city            String?
+  country         String?
+  latitude        Float?
+  longitude       Float?
+  favoritePace    Float?
   totalDistanceKm Float    @default(0)
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Post {
@@ -171,6 +175,7 @@ model Team {
   coachId      String
   coach        User              @relation("teamCoach", fields: [coachId], references: [id], onDelete: Cascade)
   members      TeamMembership[]
+  bans         TeamBan[]
   joinRequests TeamJoinRequest[]
   contents     CoachContent[]
   createdAt    DateTime          @default(now())
@@ -178,41 +183,56 @@ model Team {
 }
 
 model TeamMembership {
-  teamId     String
-  userId     String
-  role       TeamMembershipRole @default(MEMBER)
-  team       Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt  DateTime           @default(now())
+  teamId    String
+  userId    String
+  role      TeamMembershipRole @default(MEMBER)
+  team      Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime           @default(now())
 
   @@id([teamId, userId])
 }
 
-model TeamJoinRequest {
-  id         String                @id @default(cuid())
+model TeamBan {
+  id          String   @id @default(cuid())
   teamId      String
   userId      String
-  status      TeamJoinRequestStatus @default(PENDING)
-  message     String?
-  team        Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  reason      String
+  blockedById String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blockedBy   User     @relation("teamBlocker", fields: [blockedById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([teamId, userId])
+}
+
+model TeamJoinRequest {
+  id        String                @id @default(cuid())
+  teamId    String
+  userId    String
+  status    TeamJoinRequestStatus @default(PENDING)
+  message   String?
+  team      Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 
   @@unique([teamId, userId])
 }
 
 model CoachContent {
-  id         String           @id @default(cuid())
-  type       CoachContentType
-  title      String
-  content    String
-  coachId    String
-  teamId     String?
-  coach      User             @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  team       Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  id        String           @id @default(cuid())
+  type      CoachContentType
+  title     String
+  content   String
+  coachId   String
+  teamId    String?
+  coach     User             @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  team      Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 }
 
 model Notification {
@@ -242,4 +262,15 @@ model Report {
   resolvedBy   User?        @relation("reportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+}
+
+model AppSection {
+  id          String   @id
+  name        String
+  description String
+  enabled     Boolean  @default(true)
+  allowedRoles Json
+  isCritical  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

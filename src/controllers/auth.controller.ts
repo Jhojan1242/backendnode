@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 
-import { AppError } from "@/errors/app-error";
 import { getAuthenticatedUser, loginUser, registerUser } from "@/services/auth.service";
+import { requireAuthenticatedUser } from "@/utils/request";
 import { sendSuccessResponse } from "@/utils/send-response";
 
 export async function register(req: Request, res: Response) {
@@ -24,11 +24,7 @@ export async function login(req: Request, res: Response) {
 }
 
 export async function getMe(req: Request, res: Response) {
-  if (!req.user) {
-    throw new AppError("Authentication is required", 401);
-  }
-
-  const user = await getAuthenticatedUser(req.user.id);
+  const user = await getAuthenticatedUser(requireAuthenticatedUser(req).id);
 
   return sendSuccessResponse(res, {
     message: "Authenticated user fetched successfully",
@@ -37,14 +33,12 @@ export async function getMe(req: Request, res: Response) {
 }
 
 export async function getCoachArea(req: Request, res: Response) {
-  if (!req.user) {
-    throw new AppError("Authentication is required", 401);
-  }
+  const user = requireAuthenticatedUser(req);
 
   return sendSuccessResponse(res, {
     message: "Coach area fetched successfully",
     data: {
-      user: req.user,
+      user,
       permissions: ["create_team", "publish_content"]
     }
   });

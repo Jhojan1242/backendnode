@@ -24,6 +24,11 @@ type CreateCoachContentInput = {
   teamId?: string;
 };
 
+type BlockTeamMemberInput = {
+  userId: string;
+  reason: string;
+};
+
 type ListTeamsInput = {
   page: number;
   limit: number;
@@ -46,6 +51,14 @@ type ListCoachContentsInput = {
   type?: "PLAN" | "TIP";
   search?: string;
   order: "asc" | "desc";
+};
+
+type ViewerMembershipRole = "COACH" | "MEMBER";
+type ViewerJoinRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+type TeamWithViewerState<TTeam> = TTeam & {
+  viewerMembershipRole: ViewerMembershipRole | null;
+  viewerJoinRequestStatus: ViewerJoinRequestStatus | null;
 };
 
 async function ensureCoachPermissions(userId: string) {
@@ -72,6 +85,27 @@ async function ensureCoachPermissions(userId: string) {
   if (!user.isCoachValidated) {
     throw new AppError("Coach account must be validated before creating teams or content", 403);
   }
+}
+
+async function ensureTeamCoachAccess(userId: string, teamId: string) {
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: {
+      id: true,
+      coachId: true,
+      name: true
+    }
+  });
+
+  if (!team) {
+    throw new AppError("Team not found", 404);
+  }
+
+  if (team.coachId !== userId) {
+    throw new AppError("Only the team coach can manage members", 403);
+  }
+
+  return team;
 }
 
 export async function createTeam(userId: string, input: CreateTeamInput) {
@@ -101,7 +135,57 @@ export async function createTeam(userId: string, input: CreateTeamInput) {
   });
 }
 
-export async function listTeams(input: ListTeamsInput) {
+async function attachViewerStateToTeams<TTeam extends { id: string }>(
+  teams: TTeam[],
+  viewerId?: string
+): Promise<Array<TeamWithViewerState<TTeam>>> {
+  if (!viewerId || teams.length === 0) {
+    return teams.map((team) => ({
+      ...team,
+      viewerMembershipRole: null,
+      viewerJoinRequestStatus: null
+    }));
+  }
+
+  const teamIds = teams.map((team) => team.id);
+  const [memberships, joinRequests] = await Promise.all([
+    prisma.teamMembership.findMany({
+      where: {
+        userId: viewerId,
+        teamId: {
+          in: teamIds
+        }
+      },
+      select: {
+        teamId: true,
+        role: true
+      }
+    }),
+    prisma.teamJoinRequest.findMany({
+      where: {
+        userId: viewerId,
+        teamId: {
+          in: teamIds
+        }
+      },
+      select: {
+        teamId: true,
+        status: true
+      }
+    })
+  ]);
+
+  const membershipByTeamId = new Map(memberships.map((membership) => [membership.teamId, membership.role]));
+  const joinRequestByTeamId = new Map(joinRequests.map((joinRequest) => [joinRequest.teamId, joinRequest.status]));
+
+  return teams.map((team) => ({
+    ...team,
+    viewerMembershipRole: membershipByTeamId.get(team.id) ?? null,
+    viewerJoinRequestStatus: joinRequestByTeamId.get(team.id) ?? null
+  }));
+}
+
+export async function listTeams(input: ListTeamsInput, viewerId?: string) {
   const where = {
     ...(input.city
       ? {
@@ -167,7 +251,9 @@ export async function listTeams(input: ListTeamsInput) {
     take
   });
 
-  return createPaginatedResponse(teams, input, totalItems, {
+  const teamsWithViewerState = await attachViewerStateToTeams(teams, viewerId);
+
+  return createPaginatedResponse(teamsWithViewerState, input, totalItems, {
     city: input.city,
     search: input.search,
     sortBy: input.sortBy,
@@ -175,7 +261,7 @@ export async function listTeams(input: ListTeamsInput) {
   });
 }
 
-export async function getTeamById(teamId: string) {
+export async function getTeamById(teamId: string, viewerId?: string) {
   const team = await prisma.team.findUnique({
     where: { id: teamId },
     include: {
@@ -205,7 +291,9 @@ export async function getTeamById(teamId: string) {
     throw new AppError("Team not found", 404);
   }
 
-  return team;
+  const [teamWithViewerState] = await attachViewerStateToTeams([team], viewerId);
+
+  return teamWithViewerState;
 }
 
 export async function requestToJoinTeam(userId: string, teamId: string, input: CreateJoinRequestInput) {
@@ -219,6 +307,19 @@ export async function requestToJoinTeam(userId: string, teamId: string, input: C
 
   if (!team) {
     throw new AppError("Team not found", 404);
+  }
+
+  const teamBan = await prisma.teamBan.findUnique({
+    where: {
+      teamId_userId: {
+        teamId,
+        userId
+      }
+    }
+  });
+
+  if (teamBan) {
+    throw new AppError("You are blocked from joining this team", 403);
   }
 
   const membership = await prisma.teamMembership.findUnique({
@@ -263,20 +364,7 @@ export async function requestToJoinTeam(userId: string, teamId: string, input: C
 }
 
 export async function listTeamJoinRequests(userId: string, teamId: string, input: ListJoinRequestsInput) {
-  const team = await prisma.team.findUnique({
-    where: { id: teamId },
-    select: {
-      coachId: true
-    }
-  });
-
-  if (!team) {
-    throw new AppError("Team not found", 404);
-  }
-
-  if (team.coachId !== userId) {
-    throw new AppError("Only the team coach can review join requests", 403);
-  }
+  await ensureTeamCoachAccess(userId, teamId);
 
   const where = {
     teamId,
@@ -326,30 +414,34 @@ export async function reviewJoinRequest(userId: string, requestId: string, input
     throw new AppError("Only the team coach can review join requests", 403);
   }
 
-  const updatedRequest = await prisma.teamJoinRequest.update({
-    where: {
-      id: requestId
-    },
-    data: {
-      status: input.status
-    }
-  });
-
-  if (input.status === "APPROVED") {
-    await prisma.teamMembership.upsert({
+  const updatedRequest = await prisma.$transaction(async (tx) => {
+    const request = await tx.teamJoinRequest.update({
       where: {
-        teamId_userId: {
+        id: requestId
+      },
+      data: {
+        status: input.status
+      }
+    });
+
+    if (input.status === "APPROVED") {
+      await tx.teamMembership.upsert({
+        where: {
+          teamId_userId: {
+            teamId: joinRequest.teamId,
+            userId: joinRequest.userId
+          }
+        },
+        update: {},
+        create: {
           teamId: joinRequest.teamId,
           userId: joinRequest.userId
         }
-      },
-      update: {},
-      create: {
-        teamId: joinRequest.teamId,
-        userId: joinRequest.userId
-      }
-    });
-  }
+      });
+    }
+
+    return request;
+  });
 
   await createNotification({
     recipientId: joinRequest.userId,
@@ -466,4 +558,129 @@ export async function listCoachContents(input: ListCoachContentsInput) {
     search: input.search,
     order: input.order
   });
+}
+
+export async function removeTeamMember(userId: string, teamId: string, memberId: string) {
+  const team = await ensureTeamCoachAccess(userId, teamId);
+
+  if (team.coachId === memberId) {
+    throw new AppError("The team coach cannot be removed from the team", 400);
+  }
+
+  const membership = await prisma.teamMembership.findUnique({
+    where: {
+      teamId_userId: {
+        teamId,
+        userId: memberId
+      }
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          username: true
+        }
+      }
+    }
+  });
+
+  if (!membership) {
+    throw new AppError("Team member not found", 404);
+  }
+
+  await prisma.teamMembership.delete({
+    where: {
+      teamId_userId: {
+        teamId,
+        userId: memberId
+      }
+    }
+  });
+
+  await createNotification({
+    recipientId: memberId,
+    actorId: userId,
+    message: `You were removed from the team "${team.name}"`,
+    type: "TEAM_MEMBER_REMOVED"
+  });
+
+  return {
+    teamId,
+    removedUserId: memberId,
+    removedUsername: membership.user.username
+  };
+}
+
+export async function blockTeamMember(teamCoachId: string, teamId: string, input: BlockTeamMemberInput) {
+  const team = await ensureTeamCoachAccess(teamCoachId, teamId);
+
+  if (team.coachId === input.userId) {
+    throw new AppError("The team coach cannot be blocked from the team", 400);
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: {
+      id: input.userId
+    },
+    select: {
+      id: true,
+      username: true,
+      role: true
+    }
+  });
+
+  if (!targetUser) {
+    throw new AppError("User not found", 404);
+  }
+
+  if (targetUser.role !== "RUNNER") {
+    throw new AppError("Only runner accounts can be blocked from a team", 400);
+  }
+
+  const teamBan = await prisma.$transaction(async (tx) => {
+    await tx.teamMembership.deleteMany({
+      where: {
+        teamId,
+        userId: input.userId
+      }
+    });
+
+    await tx.teamJoinRequest.deleteMany({
+      where: {
+        teamId,
+        userId: input.userId
+      }
+    });
+
+    return tx.teamBan.upsert({
+      where: {
+        teamId_userId: {
+          teamId,
+          userId: input.userId
+        }
+      },
+      update: {
+        reason: input.reason,
+        blockedById: teamCoachId
+      },
+      create: {
+        teamId,
+        userId: input.userId,
+        reason: input.reason,
+        blockedById: teamCoachId
+      }
+    });
+  });
+
+  await createNotification({
+    recipientId: input.userId,
+    actorId: teamCoachId,
+    message: `You were blocked from the team "${team.name}"`,
+    type: "TEAM_MEMBER_BLOCKED"
+  });
+
+  return {
+    ...teamBan,
+    blockedUsername: targetUser.username
+  };
 }

@@ -16,9 +16,17 @@ export function validateRequest(schema: RequestSchema) {
         query: req.query
       });
 
-      req.body = validatedRequest.body ?? req.body;
-      req.params = (validatedRequest.params ?? req.params) as Request["params"];
-      req.query = (validatedRequest.query ?? req.query) as Request["query"];
+      if (validatedRequest.body) {
+        req.body = validatedRequest.body;
+      }
+
+      if (validatedRequest.params) {
+        Object.assign(req.params, validatedRequest.params);
+      }
+
+      if (validatedRequest.query) {
+        Object.assign(req.query as object, validatedRequest.query);
+      }
 
       next();
     } catch (error) {

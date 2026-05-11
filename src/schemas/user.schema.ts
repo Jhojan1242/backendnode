@@ -22,7 +22,10 @@ export const discoverUsersSchema = z.object({
     country: z.string().trim().optional(),
     role: z.enum(["RUNNER", "COACH"]).optional(),
     search: searchQuerySchema.shape.search,
-    sortBy: z.enum(["createdAt", "username"]).default("createdAt"),
+    latitude: z.coerce.number().min(-90).max(90).optional(),
+    longitude: z.coerce.number().min(-180).max(180).optional(),
+    radiusKm: z.coerce.number().positive().max(200).default(10),
+    sortBy: z.enum(["createdAt", "username", "distance"]).default("createdAt"),
     order: z.enum(["asc", "desc"]).default("desc")
   })
 });

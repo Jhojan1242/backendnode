@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 
-import { AppError } from "@/errors/app-error";
 import {
   createGoal,
   discoverNearbyUsers,
@@ -14,26 +13,11 @@ import {
   updateGoalProgress,
   updateMyProfile
 } from "@/services/user.service";
+import { getParamValue, requireAuthenticatedUser } from "@/utils/request";
 import { sendSuccessResponse } from "@/utils/send-response";
 
-function getRequestUserId(req: Request) {
-  if (!req.user) {
-    throw new AppError("Authentication is required", 401);
-  }
-
-  return req.user.id;
-}
-
-function getParamValue(value: string | string[], label: string) {
-  if (Array.isArray(value)) {
-    throw new AppError(`${label} is invalid`, 400);
-  }
-
-  return value;
-}
-
 export async function getMeProfile(req: Request, res: Response) {
-  const profile = await getMyProfile(getRequestUserId(req));
+  const profile = await getMyProfile(requireAuthenticatedUser(req).id);
 
   return sendSuccessResponse(res, {
     message: "Profile fetched successfully",
@@ -42,7 +26,7 @@ export async function getMeProfile(req: Request, res: Response) {
 }
 
 export async function getUserProfile(req: Request, res: Response) {
-  const profile = await getPublicUserProfile(getParamValue(req.params.userId, "User id"));
+  const profile = await getPublicUserProfile(getParamValue(req.params.userId, "User id"), req.user?.id);
 
   return sendSuccessResponse(res, {
     message: "Public profile fetched successfully",
@@ -51,7 +35,7 @@ export async function getUserProfile(req: Request, res: Response) {
 }
 
 export async function patchMyProfile(req: Request, res: Response) {
-  const profile = await updateMyProfile(getRequestUserId(req), req.body);
+  const profile = await updateMyProfile(requireAuthenticatedUser(req).id, req.body);
 
   return sendSuccessResponse(res, {
     message: "Profile updated successfully",
@@ -60,7 +44,7 @@ export async function patchMyProfile(req: Request, res: Response) {
 }
 
 export async function getNearbyUsers(req: Request, res: Response) {
-  const users = await discoverNearbyUsers(getRequestUserId(req), req.query as never);
+  const users = await discoverNearbyUsers(requireAuthenticatedUser(req).id, req.query as never);
 
   return sendSuccessResponse(res, {
     message: "Nearby users fetched successfully",
@@ -69,7 +53,7 @@ export async function getNearbyUsers(req: Request, res: Response) {
 }
 
 export async function followRunner(req: Request, res: Response) {
-  const result = await followUser(getRequestUserId(req), getParamValue(req.params.userId, "User id"));
+  const result = await followUser(requireAuthenticatedUser(req).id, getParamValue(req.params.userId, "User id"));
 
   return sendSuccessResponse(res, {
     message: "User followed successfully",
@@ -78,7 +62,10 @@ export async function followRunner(req: Request, res: Response) {
 }
 
 export async function unfollowRunner(req: Request, res: Response) {
-  const result = await unfollowUser(getRequestUserId(req), getParamValue(req.params.userId, "User id"));
+  const result = await unfollowUser(
+    requireAuthenticatedUser(req).id,
+    getParamValue(req.params.userId, "User id")
+  );
 
   return sendSuccessResponse(res, {
     message: "User unfollowed successfully",
@@ -105,7 +92,7 @@ export async function getFollowing(req: Request, res: Response) {
 }
 
 export async function createUserGoal(req: Request, res: Response) {
-  const goal = await createGoal(getRequestUserId(req), req.body);
+  const goal = await createGoal(requireAuthenticatedUser(req).id, req.body);
 
   return sendSuccessResponse(res, {
     statusCode: 201,
@@ -115,7 +102,7 @@ export async function createUserGoal(req: Request, res: Response) {
 }
 
 export async function getMyGoals(req: Request, res: Response) {
-  const goals = await listMyGoals(getRequestUserId(req), req.query as never);
+  const goals = await listMyGoals(requireAuthenticatedUser(req).id, req.query as never);
 
   return sendSuccessResponse(res, {
     message: "Goals fetched successfully",
@@ -125,7 +112,7 @@ export async function getMyGoals(req: Request, res: Response) {
 
 export async function patchGoalProgress(req: Request, res: Response) {
   const goal = await updateGoalProgress(
-    getRequestUserId(req),
+    requireAuthenticatedUser(req).id,
     getParamValue(req.params.goalId, "Goal id"),
     req.body
   );

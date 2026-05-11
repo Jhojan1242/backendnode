@@ -12,10 +12,29 @@ type PaginationMeta = {
   hasPreviousPage: boolean;
 };
 
-export function getPagination({ page, limit }: PaginationInput) {
+function normalizePaginationValue(value: number, fallback: number) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.trunc(parsed);
+}
+
+function normalizePagination({ page, limit }: PaginationInput): PaginationInput {
   return {
-    skip: (page - 1) * limit,
-    take: limit
+    page: Math.max(1, normalizePaginationValue(page, 1)),
+    limit: Math.max(1, normalizePaginationValue(limit, 10))
+  };
+}
+
+export function getPagination({ page, limit }: PaginationInput) {
+  const normalized = normalizePagination({ page, limit });
+
+  return {
+    skip: (normalized.page - 1) * normalized.limit,
+    take: normalized.limit
   };
 }
 
@@ -23,15 +42,16 @@ export function buildPaginationMeta(
   { page, limit }: PaginationInput,
   totalItems: number
 ): PaginationMeta {
-  const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+  const normalized = normalizePagination({ page, limit });
+  const totalPages = Math.max(1, Math.ceil(totalItems / normalized.limit));
 
   return {
-    page,
-    limit,
+    page: normalized.page,
+    limit: normalized.limit,
     totalItems,
     totalPages,
-    hasNextPage: page < totalPages,
-    hasPreviousPage: page > 1
+    hasNextPage: normalized.page < totalPages,
+    hasPreviousPage: normalized.page > 1
   };
 }
 

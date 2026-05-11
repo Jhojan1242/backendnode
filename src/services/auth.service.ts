@@ -36,6 +36,7 @@ const authUserSelect = {
   updatedAt: true
 } as const;
 
+
 function signAccessToken(user: Pick<AuthenticatedUser, "id" | "email" | "role">) {
   return jwt.sign(
     {

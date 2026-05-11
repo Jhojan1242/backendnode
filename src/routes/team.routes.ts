@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import {
+  blockRunnerFromTeam,
   createCoachContent,
   createCoachTeam,
   createJoinRequest,
@@ -8,11 +9,14 @@ import {
   getJoinRequests,
   getTeam,
   getTeams,
+  removeRunnerFromTeam,
   reviewRequest
 } from "@/controllers/team.controller";
-import { requireAuth, requireRole } from "@/middlewares/auth.middleware";
+import { attachOptionalAuth, requireAuth, requireRole } from "@/middlewares/auth.middleware";
+import { mutationRateLimit } from "@/middlewares/security-policies.middleware";
 import { validateRequest } from "@/middlewares/validate-request.middleware";
 import {
+  blockTeamMemberSchema,
   createCoachContentSchema,
   createJoinRequestSchema,
   createTeamSchema,
@@ -20,16 +24,18 @@ import {
   listJoinRequestsQuerySchema,
   listTeamsQuerySchema,
   reviewJoinRequestSchema,
-  teamIdParamSchema
+  teamIdParamSchema,
+  teamMemberParamsSchema
 } from "@/schemas/team.schema";
 import { asyncHandler } from "@/utils/async-handler";
 
 const teamRouter = Router();
 
-teamRouter.get("/", validateRequest(listTeamsQuerySchema), asyncHandler(getTeams));
-teamRouter.get("/:teamId", validateRequest(teamIdParamSchema), asyncHandler(getTeam));
+teamRouter.get("/", asyncHandler(attachOptionalAuth), validateRequest(listTeamsQuerySchema), asyncHandler(getTeams));
+teamRouter.get("/:teamId", asyncHandler(attachOptionalAuth), validateRequest(teamIdParamSchema), asyncHandler(getTeam));
 teamRouter.post(
   "/",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   requireRole("COACH", "ADMIN"),
   validateRequest(createTeamSchema),
@@ -37,6 +43,7 @@ teamRouter.post(
 );
 teamRouter.post(
   "/:teamId/join-requests",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   validateRequest(createJoinRequestSchema),
   asyncHandler(createJoinRequest)
@@ -49,12 +56,30 @@ teamRouter.get(
 );
 teamRouter.patch(
   "/join-requests/:requestId",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   validateRequest(reviewJoinRequestSchema),
   asyncHandler(reviewRequest)
 );
+teamRouter.delete(
+  "/:teamId/members/:memberId",
+  mutationRateLimit,
+  asyncHandler(requireAuth),
+  requireRole("COACH", "ADMIN"),
+  validateRequest(teamMemberParamsSchema),
+  asyncHandler(removeRunnerFromTeam)
+);
+teamRouter.post(
+  "/:teamId/blocks",
+  mutationRateLimit,
+  asyncHandler(requireAuth),
+  requireRole("COACH", "ADMIN"),
+  validateRequest(blockTeamMemberSchema),
+  asyncHandler(blockRunnerFromTeam)
+);
 teamRouter.post(
   "/content",
+  mutationRateLimit,
   asyncHandler(requireAuth),
   requireRole("COACH", "ADMIN"),
   validateRequest(createCoachContentSchema),

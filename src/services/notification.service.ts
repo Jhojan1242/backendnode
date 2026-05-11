@@ -1,4 +1,5 @@
 import prisma from "@/configs/prisma";
+import { AppError } from "@/errors/app-error";
 import { createPaginatedResponse, getPagination } from "@/utils/pagination";
 
 type CreateNotificationInput = {
@@ -12,6 +13,8 @@ type CreateNotificationInput = {
     | "TEAM_JOIN_REQUEST"
     | "TEAM_REQUEST_APPROVED"
     | "TEAM_REQUEST_REJECTED"
+    | "TEAM_MEMBER_REMOVED"
+    | "TEAM_MEMBER_BLOCKED"
     | "GOAL_COMPLETED"
     | "COACH_CONTENT_PUBLISHED";
 };
@@ -57,10 +60,20 @@ export async function listNotifications(userId: string, input: ListNotifications
 }
 
 export async function markNotificationAsRead(userId: string, notificationId: string) {
-  return prisma.notification.update({
+  const notification = await prisma.notification.findFirst({
     where: {
       id: notificationId,
       recipientId: userId
+    }
+  });
+
+  if (!notification) {
+    throw new AppError("Notification not found", 404);
+  }
+
+  return prisma.notification.update({
+    where: {
+      id: notificationId
     },
     data: {
       isRead: true
