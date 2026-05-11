@@ -5,7 +5,12 @@ import { ZodError } from "zod";
 import { AppError } from "@/errors/app-error";
 
 export function notFoundHandler(req: Request, _res: Response, next: NextFunction) {
-  next(new AppError(`Route not found: ${req.method} ${req.originalUrl}`, 404));
+  const message =
+    process.env.NODE_ENV === "production"
+      ? "Requested resource was not found"
+      : `Route not found: ${req.method} ${req.originalUrl}`;
+
+  next(new AppError(message, 404));
 }
 
 export function globalErrorHandler(
