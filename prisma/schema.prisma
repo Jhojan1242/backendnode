@@ -274,3 +274,11 @@ model AppSection {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model RateLimitBucket {
+  key       String   @id
+  count     Int
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

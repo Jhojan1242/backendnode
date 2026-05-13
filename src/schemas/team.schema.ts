@@ -10,7 +10,7 @@ export const createTeamSchema = z.object({
   })
 });
 
-const teamIdSchema = z.string().trim().min(1);
+const teamIdSchema = z.string().cuid();
 
 export const listTeamsQuerySchema = z.object({
   query: paginationQuerySchema.extend({

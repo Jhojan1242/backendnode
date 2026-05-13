@@ -64,8 +64,8 @@ userRouter.delete(
   validateRequest(userIdParamSchema),
   asyncHandler(unfollowRunner)
 );
-userRouter.get("/:userId/followers", validateRequest(followListQuerySchema), asyncHandler(getFollowers));
-userRouter.get("/:userId/following", validateRequest(followListQuerySchema), asyncHandler(getFollowing));
+userRouter.get("/:userId/followers", asyncHandler(requireAuth), validateRequest(followListQuerySchema), asyncHandler(getFollowers));
+userRouter.get("/:userId/following", asyncHandler(requireAuth), validateRequest(followListQuerySchema), asyncHandler(getFollowing));
 userRouter.post(
   "/goals",
   mutationRateLimit,

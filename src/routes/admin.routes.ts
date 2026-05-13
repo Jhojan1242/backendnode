@@ -45,7 +45,7 @@ adminRouter.get(
   validateRequest(listAdminUsersQuerySchema),
   asyncHandler(getAdminUsers)
 );
-adminRouter.get("/sections", asyncHandler(requireAuth), requireRole("ADMIN"), asyncHandler(getAdminSections));
+adminRouter.get("/sections", asyncHandler(requireAuth), asyncHandler(getAdminSections));
 adminRouter.patch(
   "/sections/:sectionId",
   mutationRateLimit,

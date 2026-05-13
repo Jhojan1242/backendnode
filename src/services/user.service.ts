@@ -1,7 +1,7 @@
 import prisma from "@/configs/prisma";
 import { AppError } from "@/errors/app-error";
 import { createNotification } from "@/services/notification.service";
-import { privateUserSelect, publicUserSelect } from "@/services/user.selectors";
+import { discoverableUserSelect, privateUserSelect, publicUserSelect } from "@/services/user.selectors";
 import { createPaginatedResponse, getPagination } from "@/utils/pagination";
 
 type UpdateProfileInput = {
@@ -269,7 +269,7 @@ export async function discoverNearbyUsers(userId: string, input: DiscoverUsersIn
         }
       }
     },
-    select: publicUserSelect
+    select: discoverableUserSelect
   });
 
   const usersWithDistance = geoUsers

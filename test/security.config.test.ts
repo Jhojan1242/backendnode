@@ -42,7 +42,29 @@ describe("user selectors", () => {
     expect("email" in publicUserSelect).toBe(false);
   });
 
+  it("does not expose exact coordinates on public user payloads", () => {
+    const publicProfile = publicUserSelect.profile;
+
+    if (!publicProfile || !("select" in publicProfile)) {
+      throw new Error("Expected public profile select configuration");
+    }
+
+    expect("latitude" in publicProfile.select).toBe(false);
+    expect("longitude" in publicProfile.select).toBe(false);
+  });
+
   it("keeps email available on private profile payloads", () => {
     expect("email" in privateUserSelect).toBe(true);
+  });
+
+  it("keeps coordinates available on private profile payloads", () => {
+    const privateProfile = privateUserSelect.profile;
+
+    if (!privateProfile || !("select" in privateProfile)) {
+      throw new Error("Expected private profile select configuration");
+    }
+
+    expect("latitude" in privateProfile.select).toBe(true);
+    expect("longitude" in privateProfile.select).toBe(true);
   });
 });

@@ -3,6 +3,6 @@ services:
     name: runner-social-backend
     env: node
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm prisma:migrate:deploy && pnpm build
     startCommand: pnpm start
     autoDeploy: true
