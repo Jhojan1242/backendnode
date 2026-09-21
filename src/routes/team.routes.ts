@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import {
   blockRunnerFromTeam,
+  assignPlanToRunner,
   createCoachContent,
   createCoachTeam,
   createJoinRequest,
@@ -17,6 +18,7 @@ import { mutationRateLimit } from "@/middlewares/security-policies.middleware";
 import { validateRequest } from "@/middlewares/validate-request.middleware";
 import {
   blockTeamMemberSchema,
+  assignTrainingPlanSchema,
   createCoachContentSchema,
   createJoinRequestSchema,
   createTeamSchema,
@@ -84,6 +86,14 @@ teamRouter.post(
   requireRole("COACH", "ADMIN"),
   validateRequest(createCoachContentSchema),
   asyncHandler(createCoachContent)
+);
+teamRouter.post(
+  "/:teamId/plan-assignments",
+  mutationRateLimit,
+  asyncHandler(requireAuth),
+  requireRole("COACH", "ADMIN"),
+  validateRequest(assignTrainingPlanSchema),
+  asyncHandler(assignPlanToRunner)
 );
 teamRouter.get("/content/all", validateRequest(listCoachContentsQuerySchema), asyncHandler(getCoachContents));
 

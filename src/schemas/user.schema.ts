@@ -9,6 +9,7 @@ export const updateProfileSchema = z.object({
     bio: z.string().trim().max(280).nullable().optional(),
     avatarUrl: z.url().nullable().optional(),
     city: z.string().trim().max(80).nullable().optional(),
+    region: z.string().trim().max(80).nullable().optional(),
     country: z.string().trim().max(80).nullable().optional(),
     latitude: z.number().min(-90).max(90).nullable().optional(),
     longitude: z.number().min(-180).max(180).nullable().optional(),

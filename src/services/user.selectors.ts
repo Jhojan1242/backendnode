@@ -4,6 +4,7 @@ const publicProfileSelect = {
   bio: true,
   avatarUrl: true,
   city: true,
+  region: true,
   country: true,
   totalDistanceKm: true
 } as const;

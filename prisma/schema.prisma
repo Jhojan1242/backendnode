@@ -81,6 +81,8 @@ model User {
   teamBans              TeamBan[]
   teamBlocksIssued      TeamBan[]         @relation("teamBlocker")
   coachContents         CoachContent[]
+  trainingPlanAssignments TrainingPlanAssignment[] @relation("planAssignmentRunner")
+  trainingPlansAssigned TrainingPlanAssignment[] @relation("planAssignmentCoach")
   reportsCreated        Report[]          @relation("reportReporter")
   reportsResolved       Report[]          @relation("reportResolver")
   createdAt             DateTime          @default(now())
@@ -94,6 +96,7 @@ model Profile {
   bio             String?
   avatarUrl       String?
   city            String?
+  region          String?
   country         String?
   latitude        Float?
   longitude       Float?
@@ -178,6 +181,7 @@ model Team {
   bans         TeamBan[]
   joinRequests TeamJoinRequest[]
   contents     CoachContent[]
+  trainingPlanAssignments TrainingPlanAssignment[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 }
@@ -189,6 +193,7 @@ model TeamMembership {
   team      Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime           @default(now())
+  trainingPlanAssignments TrainingPlanAssignment[]
 
   @@id([teamId, userId])
 }
@@ -227,12 +232,34 @@ model CoachContent {
   type      CoachContentType
   title     String
   content   String
+  recommendedLevel String?
+  tags      String[]         @default([])
   coachId   String
   teamId    String?
   coach     User             @relation(fields: [coachId], references: [id], onDelete: Cascade)
   team      Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
+  assignments TrainingPlanAssignment[]
+}
+
+model TrainingPlanAssignment {
+  id         String       @id @default(cuid())
+  teamId     String
+  runnerId   String
+  planId     String
+  coachId    String
+  team       Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  runner     User         @relation("planAssignmentRunner", fields: [runnerId], references: [id], onDelete: Cascade)
+  plan       CoachContent @relation(fields: [planId], references: [id], onDelete: Cascade)
+  coach      User         @relation("planAssignmentCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  membership TeamMembership @relation(fields: [teamId, runnerId], references: [teamId, userId], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([teamId, runnerId])
+  @@index([runnerId])
+  @@index([planId])
 }
 
 model Notification {

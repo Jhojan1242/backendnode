@@ -21,12 +21,19 @@ type CreateCoachContentInput = {
   type: "PLAN" | "TIP";
   title: string;
   content: string;
+  recommendedLevel?: string;
+  tags?: string[];
   teamId?: string;
 };
 
 type BlockTeamMemberInput = {
   userId: string;
   reason: string;
+};
+
+type AssignTrainingPlanInput = {
+  runnerId: string;
+  planId: string;
 };
 
 type ListTeamsInput = {
@@ -284,6 +291,18 @@ export async function getTeamById(teamId: string, viewerId?: string) {
         }
       },
       contents: true
+      ,trainingPlanAssignments: {
+        include: {
+          plan: true,
+          runner: {
+            select: {
+              id: true,
+              username: true,
+              profile: true
+            }
+          }
+        }
+      }
     }
   });
 
@@ -294,6 +313,28 @@ export async function getTeamById(teamId: string, viewerId?: string) {
   const [teamWithViewerState] = await attachViewerStateToTeams([team], viewerId);
 
   return teamWithViewerState;
+}
+
+export async function assignTrainingPlan(coachId: string, teamId: string, input: AssignTrainingPlanInput) {
+  await ensureTeamCoachAccess(coachId, teamId);
+
+  const [membership, plan] = await Promise.all([
+    prisma.teamMembership.findUnique({ where: { teamId_userId: { teamId, userId: input.runnerId } } }),
+    prisma.coachContent.findUnique({ where: { id: input.planId } })
+  ]);
+
+  if (!membership || membership.role === "COACH") {
+    throw new AppError("The selected user is not a runner in this team", 400);
+  }
+  if (!plan || plan.type !== "PLAN" || plan.coachId !== coachId) {
+    throw new AppError("The selected plan does not belong to this coach", 403);
+  }
+
+  return prisma.trainingPlanAssignment.upsert({
+    where: { teamId_runnerId: { teamId, runnerId: input.runnerId } },
+    update: { planId: input.planId },
+    create: { teamId, runnerId: input.runnerId, planId: input.planId, coachId }
+  });
 }
 
 export async function requestToJoinTeam(userId: string, teamId: string, input: CreateJoinRequestInput) {

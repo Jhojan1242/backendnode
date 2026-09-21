@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 
 import {
   blockTeamMember,
+  assignTrainingPlan,
   createTeam,
   getTeamById,
   listCoachContents,
@@ -90,6 +91,20 @@ export async function createCoachContent(req: Request, res: Response) {
     statusCode: 201,
     message: "Coach content published successfully",
     data: content
+  });
+}
+
+export async function assignPlanToRunner(req: Request, res: Response) {
+  const assignment = await assignTrainingPlan(
+    requireAuthenticatedUser(req).id,
+    getParamValue(req.params.teamId, "Team id"),
+    req.body
+  );
+
+  return sendSuccessResponse(res, {
+    statusCode: 201,
+    message: "Training plan assigned successfully",
+    data: assignment
   });
 }
 

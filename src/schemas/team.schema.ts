@@ -50,7 +50,19 @@ export const createCoachContentSchema = z.object({
     type: z.enum(["PLAN", "TIP"]),
     title: z.string().trim().min(3).max(120),
     content: z.string().trim().min(10).max(5000),
+    recommendedLevel: z.string().trim().max(30).optional(),
+    tags: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
     teamId: teamIdSchema.optional()
+  })
+});
+
+export const assignTrainingPlanSchema = z.object({
+  params: z.object({
+    teamId: teamIdSchema
+  }),
+  body: z.object({
+    runnerId: z.string().cuid(),
+    planId: z.string().cuid()
   })
 });
 
